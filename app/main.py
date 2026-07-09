@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import load_settings, resolve_artifact_root
 from app.engine.common import ModelNotLoadedError, UnknownModelError, UnsupportedBackendError
 from app.engine.router import VideoRouterEngine
-from app.schemas import ImageToVideoRequest, VideoGenerationRequest
+from app.schemas import AdminLoadRequest, ImageToVideoRequest, VideoGenerationRequest
 
 
 def create_app(settings_path: str | Path | None = None) -> FastAPI:
@@ -65,8 +65,8 @@ def create_app(settings_path: str | Path | None = None) -> FastAPI:
         return engine.gpu_memory_payload()
 
     @app.post("/v1/admin/models/{model_name:path}/load")
-    async def load_model(model_name: str) -> dict:
-        return await engine.load_model(model_name)
+    async def load_model(model_name: str, load_request: AdminLoadRequest | None = None) -> dict:
+        return await engine.load_model(model_name, load_request)
 
     @app.post("/v1/admin/models/{model_name:path}/unload")
     async def unload_model(model_name: str) -> dict:
@@ -84,4 +84,3 @@ def create_app(settings_path: str | Path | None = None) -> FastAPI:
 
 
 app = create_app()
-

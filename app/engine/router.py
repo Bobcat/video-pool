@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from pathlib import Path
@@ -13,13 +14,21 @@ from app.engine.common import (
     UnsupportedBackendError,
     VideoJob,
     estimate_model_artifact_size_mib,
+    load_constraints_for_backend,
+    load_recommendations_for_backend,
     query_gpu_memory,
     query_primary_gpu_used_mib,
     release_loaded_torch_cuda_memory,
+    reset_loaded_torch_cuda_context,
 )
 from app.engine.scheduler import LoadedModelExecutor, RuntimeScheduler
+from app.engine.lightx2v_serve import LightX2VServeRuntime
 from app.engine.stub import StubVideoRuntime
-from app.schemas import ImageToVideoRequest, VideoData, VideoGenerationRequest, VideoResponse
+from app.engine.wan import WanTextToVideoRuntime
+from app.schemas import AdminLoadRequest, ImageToVideoRequest, VideoData, VideoGenerationRequest, VideoResponse
+
+
+_INPROCESS_CUDA_BACKENDS = {"diffusers_wan_t2v"}
 
 
 class VideoRouterEngine:
@@ -28,7 +37,7 @@ class VideoRouterEngine:
         self.artifact_root = resolve_artifact_root(settings)
         self._scheduler = RuntimeScheduler()
         self._states: dict[str, ModelRuntimeState] = {}
-        self._runtimes: dict[str, StubVideoRuntime] = {}
+        self._runtimes: dict[str, object] = {}
         for name, model_settings in settings.engine.models.items():
             self._states[name] = ModelRuntimeState(
                 name=name,
@@ -51,25 +60,30 @@ class VideoRouterEngine:
         for state in self._states.values():
             state.loaded = False
 
-    async def load_model(self, model_name: str) -> dict[str, Any]:
+    async def load_model(self, model_name: str, load_request: AdminLoadRequest | None = None) -> dict[str, Any]:
         model_settings = self._model_settings(model_name)
         state = self._states[model_name]
+        load_override = _load_override_payload(load_request)
         if state.loaded:
+            if load_override:
+                raise ValueError("load overrides cannot be applied while the model is loaded")
             return self._state_payload(model_name)
         state.loading = True
         state.last_error = None
         gpu_used_before_mib = query_primary_gpu_used_mib()
         try:
-            runtime = self._create_runtime(model_name, model_settings)
+            runtime_settings = _apply_load_override(model_settings, load_override)
+            runtime = await asyncio.to_thread(self._create_runtime, model_name, runtime_settings)
             executor = LoadedModelExecutor(
                 model_name=model_name,
                 complete_fn=runtime.complete,
-                target_inflight=model_settings.target_inflight,
+                target_inflight=runtime_settings.target_inflight,
             )
             await self._scheduler.register(model_name, executor)
             self._runtimes[model_name] = runtime
             state.loaded = True
             state.loaded_at = time.time()
+            state.load_override = dict(load_override)
             gpu_used_after_mib = query_primary_gpu_used_mib()
             observed_vram_mib = _observed_vram_delta_mib(gpu_used_before_mib, gpu_used_after_mib)
             if observed_vram_mib is not None:
@@ -87,15 +101,18 @@ class VideoRouterEngine:
             state.loading = False
 
     async def unload_model(self, model_name: str) -> dict[str, Any]:
-        self._model_settings(model_name)
+        model_settings = self._model_settings(model_name)
         await self._scheduler.unregister(model_name)
         runtime = self._runtimes.pop(model_name, None)
         self._close_runtime(runtime)
         del runtime
-        release_loaded_torch_cuda_memory()
         state = self._states[model_name]
         state.loaded = False
         state.loaded_at = None
+        state.load_override = {}
+        release_loaded_torch_cuda_memory()
+        if _uses_inprocess_cuda(model_settings.backend) and not self._has_loaded_inprocess_cuda_model():
+            reset_loaded_torch_cuda_context()
         return self._state_payload(model_name)
 
     async def generate(self, request: VideoGenerationRequest) -> VideoResponse:
@@ -191,15 +208,22 @@ class VideoRouterEngine:
         except KeyError as exc:
             raise UnknownModelError(f"unknown model: {model_name}") from exc
 
-    def _create_runtime(self, model_name: str, model_settings: ModelSettings) -> StubVideoRuntime:
+    def _create_runtime(self, model_name: str, model_settings: ModelSettings) -> object:
         if model_settings.backend == "stub":
             return StubVideoRuntime(model_name, model_settings, self.artifact_root)
+        if model_settings.backend == "diffusers_wan_t2v":
+            return WanTextToVideoRuntime(model_name, model_settings, self.artifact_root)
+        if model_settings.backend == "lightx2v_serve":
+            return LightX2VServeRuntime(model_name, model_settings, self.artifact_root)
         raise UnsupportedBackendError(f"unsupported backend: {model_settings.backend}")
 
     def _close_runtime(self, runtime: object | None) -> None:
         close = getattr(runtime, "close", None)
         if close is not None:
             close()
+
+    def _has_loaded_inprocess_cuda_model(self) -> bool:
+        return any(state.loaded and _uses_inprocess_cuda(state.backend) for state in self._states.values())
 
     def _public_model_payload(self, model_name: str) -> dict[str, Any]:
         model_settings = self._model_settings(model_name)
@@ -241,6 +265,10 @@ class VideoRouterEngine:
             "recommended_guidance": model_settings.recommended_guidance,
             "generation_parameters": dict(model_settings.generation_parameters),
             "image_to_video_parameters": dict(model_settings.image_to_video_parameters),
+            "load_constraints": load_constraints_for_backend(model_settings.backend),
+            "load_recommendations": load_recommendations_for_backend(model_settings.backend),
+            "load_override": dict(state.load_override),
+            "definition": _definition_payload(model_settings),
         }
 
     def _gpu_model_payload(self, model_name: str, model_settings: ModelSettings) -> dict[str, Any]:
@@ -284,3 +312,39 @@ def _observed_vram_delta_mib(before_mib: int | None, after_mib: int | None) -> i
         return None
     return delta
 
+
+def _uses_inprocess_cuda(backend: str) -> bool:
+    return backend in _INPROCESS_CUDA_BACKENDS
+
+
+def _load_override_payload(load_request: AdminLoadRequest | None) -> dict[str, Any]:
+    if load_request is None:
+        return {}
+    fields_set = getattr(load_request, "model_fields_set", None)
+    if fields_set is None:
+        fields_set = getattr(load_request, "__fields_set__", set())
+    return {field_name: getattr(load_request, field_name) for field_name in fields_set}
+
+
+def _apply_load_override(model_settings: ModelSettings, load_override: dict[str, Any]) -> ModelSettings:
+    if not load_override:
+        return model_settings.model_copy(update={"load_override": {}})
+    supported_keys = set(load_constraints_for_backend(model_settings.backend))
+    unsupported = sorted(key for key in load_override if key not in supported_keys)
+    if unsupported:
+        names = ", ".join(unsupported)
+        raise ValueError(f"unsupported load override for {model_settings.backend} backend: {names}")
+    return model_settings.model_copy(update={"load_override": dict(load_override)})
+
+
+def _definition_payload(model_settings: ModelSettings) -> dict[str, Any]:
+    return {
+        "model_path": model_settings.model_path,
+        "backend": model_settings.backend,
+        "enabled": model_settings.enabled,
+        "target_inflight": model_settings.target_inflight,
+        "recommended_steps": model_settings.recommended_steps,
+        "recommended_guidance": model_settings.recommended_guidance,
+        "generation_parameters": dict(model_settings.generation_parameters),
+        "image_to_video_parameters": dict(model_settings.image_to_video_parameters),
+    }

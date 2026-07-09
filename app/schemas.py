@@ -43,6 +43,28 @@ class ImageToVideoRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class AdminLoadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    wan_transformer_dtype: Literal["bfloat16", "float16"] | None = None
+    wan_vae_dtype: Literal["float32", "bfloat16", "float16"] | None = None
+    wan_sequential_cpu_offload: bool | None = None
+    wan_vae_tiling: bool | None = None
+    lightx2v_text_len: int | None = Field(default=None, ge=1)
+    lightx2v_sample_guide_scale: float | None = Field(default=None, ge=0)
+    lightx2v_sample_shift: float | None = None
+    lightx2v_enable_cfg: bool | None = None
+    lightx2v_denoising_step_list: list[int] | None = None
+    lightx2v_cpu_offload: bool | None = None
+    lightx2v_offload_granularity: Literal["block", "model"] | None = None
+    lightx2v_t5_cpu_offload: bool | None = None
+    lightx2v_vae_cpu_offload: bool | None = None
+    lightx2v_self_attn_1_type: Literal["torch_sdpa"] | None = None
+    lightx2v_cross_attn_1_type: Literal["torch_sdpa"] | None = None
+    lightx2v_cross_attn_2_type: Literal["torch_sdpa"] | None = None
+    lightx2v_rope_type: Literal["torch"] | None = None
+
+
 class VideoData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -67,4 +89,3 @@ class VideoResponse(BaseModel):
     status: Literal["completed"] = "completed"
     data: list[VideoData]
     metrics: dict[str, Any] = Field(default_factory=dict)
-

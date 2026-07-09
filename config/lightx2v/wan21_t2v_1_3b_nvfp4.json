@@ -1,0 +1,22 @@
+{
+  "infer_steps": 4,
+  "target_video_length": 81,
+  "text_len": 512,
+  "target_height": 480,
+  "target_width": 832,
+  "self_attn_1_type": "torch_sdpa",
+  "cross_attn_1_type": "torch_sdpa",
+  "cross_attn_2_type": "torch_sdpa",
+  "rope_type": "torch",
+  "sample_guide_scale": 1.0,
+  "sample_shift": 5.0,
+  "enable_cfg": false,
+  "denoising_step_list": [1000, 750, 500, 250],
+  "cpu_offload": true,
+  "offload_granularity": "block",
+  "t5_cpu_offload": true,
+  "vae_cpu_offload": false,
+  "dit_quantized": true,
+  "dit_quant_scheme": "nvfp4",
+  "dit_quantized_ckpt": "/home/gunnar/models/Wan-NVFP4/wan2.1_t2v_1_3b_nvfp4_lightx2v_4step.safetensors"
+}

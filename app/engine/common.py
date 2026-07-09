@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import gc
+import ctypes
+import ctypes.util
 from pathlib import Path
 import subprocess
 import sys
@@ -40,6 +42,26 @@ def release_loaded_torch_cuda_memory() -> None:
         gc.collect()
         return
     release_torch_cuda_memory(torch_module)
+
+
+def reset_loaded_torch_cuda_context() -> bool:
+    torch_module = sys.modules.get("torch")
+    if torch_module is None:
+        return False
+    cuda = getattr(torch_module, "cuda", None)
+    if cuda is None or not cuda.is_available() or not cuda.is_initialized():
+        return False
+    release_torch_cuda_memory(torch_module)
+    cudart_path = ctypes.util.find_library("cudart") or "libcudart.so"
+    try:
+        cudart = ctypes.CDLL(cudart_path)
+    except OSError:
+        return False
+    cuda_device_reset = getattr(cudart, "cudaDeviceReset", None)
+    if cuda_device_reset is None:
+        return False
+    cuda_device_reset.restype = ctypes.c_int
+    return cuda_device_reset() == 0
 
 
 def query_gpu_memory() -> tuple[list[dict[str, object]], str | None]:
@@ -165,4 +187,120 @@ class ModelRuntimeState:
     last_error: str | None = None
     observed_vram_mib: int | None = None
     artifact_size_mib: int | None = None
+    load_override: dict[str, Any] = field(default_factory=dict)
 
+
+def load_constraints_for_backend(backend: str) -> dict[str, Any]:
+    normalized_backend = backend.strip().lower()
+    if normalized_backend == "diffusers_wan_t2v":
+        return {
+            "wan_transformer_dtype": {
+                "kind": "enum",
+                "label": "transformer dtype",
+                "default": "bfloat16",
+                "allowed_values": ["bfloat16", "float16"],
+            },
+            "wan_vae_dtype": {
+                "kind": "enum",
+                "label": "VAE dtype",
+                "default": "float32",
+                "allowed_values": ["float32", "bfloat16", "float16"],
+            },
+            "wan_sequential_cpu_offload": {
+                "kind": "boolean",
+                "label": "sequential CPU offload",
+                "default": True,
+            },
+            "wan_vae_tiling": {
+                "kind": "boolean",
+                "label": "VAE tiling",
+                "default": True,
+            },
+        }
+    if normalized_backend == "lightx2v_serve":
+        return {
+            "lightx2v_text_len": {
+                "kind": "integer",
+                "label": "text_len",
+                "default": 512,
+                "minimum": 64,
+                "maximum": 1024,
+                "step": 64,
+            },
+            "lightx2v_sample_guide_scale": {
+                "kind": "number",
+                "label": "sample_guide_scale",
+                "default": 1.0,
+                "minimum": 0.0,
+                "maximum": 20.0,
+                "step": 0.1,
+            },
+            "lightx2v_sample_shift": {
+                "kind": "number",
+                "label": "sample_shift",
+                "default": 5.0,
+                "minimum": 0.0,
+                "maximum": 20.0,
+                "step": 0.1,
+            },
+            "lightx2v_enable_cfg": {
+                "kind": "boolean",
+                "label": "enable_cfg",
+                "default": False,
+            },
+            "lightx2v_denoising_step_list": {
+                "kind": "integer_list",
+                "label": "denoising_step_list",
+                "default": [1000, 750, 500, 250],
+            },
+            "lightx2v_cpu_offload": {
+                "kind": "boolean",
+                "label": "cpu_offload",
+                "default": True,
+            },
+            "lightx2v_offload_granularity": {
+                "kind": "enum",
+                "label": "offload_granularity",
+                "default": "block",
+                "allowed_values": ["block", "model"],
+            },
+            "lightx2v_t5_cpu_offload": {
+                "kind": "boolean",
+                "label": "t5_cpu_offload",
+                "default": True,
+            },
+            "lightx2v_vae_cpu_offload": {
+                "kind": "boolean",
+                "label": "vae_cpu_offload",
+                "default": False,
+            },
+            "lightx2v_self_attn_1_type": {
+                "kind": "enum",
+                "label": "self_attn_1_type",
+                "default": "torch_sdpa",
+                "allowed_values": ["torch_sdpa"],
+            },
+            "lightx2v_cross_attn_1_type": {
+                "kind": "enum",
+                "label": "cross_attn_1_type",
+                "default": "torch_sdpa",
+                "allowed_values": ["torch_sdpa"],
+            },
+            "lightx2v_cross_attn_2_type": {
+                "kind": "enum",
+                "label": "cross_attn_2_type",
+                "default": "torch_sdpa",
+                "allowed_values": ["torch_sdpa"],
+            },
+            "lightx2v_rope_type": {
+                "kind": "enum",
+                "label": "rope_type",
+                "default": "torch",
+                "allowed_values": ["torch"],
+            },
+        }
+    return {}
+
+
+def load_recommendations_for_backend(_backend: str) -> dict[str, Any]:
+    return {}

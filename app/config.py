@@ -37,6 +37,24 @@ class ModelSettings(BaseModel):
     recommended_guidance: float | None = Field(default=None, ge=0)
     generation_parameters: dict[str, Any] = Field(default_factory=dict)
     image_to_video_parameters: dict[str, Any] = Field(default_factory=dict)
+    load_override: dict[str, Any] = Field(default_factory=dict)
+    lightx2v_python: str = "python"
+    lightx2v_host: str = "127.0.0.1"
+    lightx2v_port: int | None = Field(default=None, ge=1, le=65535)
+    lightx2v_model_cls: str | None = None
+    lightx2v_task: str | None = None
+    lightx2v_config_json: str | None = None
+    lightx2v_lora_dir: str | None = None
+    lightx2v_cache_dir: str | None = None
+    lightx2v_metric_port: int | None = Field(default=None, ge=1, le=65535)
+    lightx2v_max_queue_size: int = Field(default=1, ge=1)
+    lightx2v_start_timeout_s: float = Field(default=900.0, gt=0)
+    lightx2v_stop_timeout_s: float = Field(default=10.0, ge=0)
+    lightx2v_timeout_s: float = Field(default=3600.0, gt=0)
+    lightx2v_poll_interval_s: float = Field(default=0.5, gt=0)
+    lightx2v_library_path: tuple[str, ...] = ()
+    lightx2v_env: dict[str, str] = Field(default_factory=dict)
+    lightx2v_extra_args: tuple[str, ...] = ()
 
 
 class EngineSettings(BaseModel):
@@ -85,4 +103,3 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
         else:
             merged[key] = value
     return merged
-

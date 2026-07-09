@@ -28,6 +28,16 @@ def _settings_path(root: Path) -> Path:
                             "max_images": 1,
                             "max_output_videos": 1,
                             "vram_estimate_mib": 0,
+                        },
+                        "wan-video": {
+                            "backend": "diffusers_wan_t2v",
+                            "enabled": False,
+                            "modalities": ["text"],
+                            "output_modalities": ["video"],
+                            "tasks": ["text_to_video"],
+                            "max_images": 0,
+                            "max_output_videos": 1,
+                            "vram_estimate_mib": 11100,
                         }
                     }
                 },
@@ -57,6 +67,17 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["data"][0]["id"], "stub-video")
         self.assertEqual(payload["data"][0]["owned_by"], "video-pool")
         self.assertIn("image_to_video", payload["data"][0]["capabilities"]["tasks"])
+
+    def test_admin_models_returns_load_constraints(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with TestClient(create_app(_settings_path(Path(tmpdir)))) as client:
+                response = client.get("/v1/admin/models")
+
+        self.assertEqual(response.status_code, 200)
+        models = {model["id"]: model for model in response.json()["data"]}
+        self.assertIn("wan_vae_tiling", models["wan-video"]["load_constraints"])
+        self.assertEqual(models["wan-video"]["load_constraints"]["wan_vae_tiling"]["default"], True)
+        self.assertEqual(models["wan-video"]["load_override"], {})
 
     def test_video_generation_returns_artifact(self):
         with tempfile.TemporaryDirectory() as tmpdir:
