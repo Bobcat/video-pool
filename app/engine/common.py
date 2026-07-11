@@ -262,16 +262,31 @@ def load_constraints_for_backend(backend: str) -> dict[str, Any]:
                 "kind": "enum",
                 "label": "offload_granularity",
                 "default": "block",
-                "allowed_values": ["block", "model"],
+                "allowed_values": ["block", "model", "phase"],
             },
             "lightx2v_t5_cpu_offload": {
                 "kind": "boolean",
                 "label": "t5_cpu_offload",
                 "default": True,
             },
+            "lightx2v_clip_cpu_offload": {
+                "kind": "boolean",
+                "label": "clip_cpu_offload",
+                "default": True,
+            },
             "lightx2v_vae_cpu_offload": {
                 "kind": "boolean",
                 "label": "vae_cpu_offload",
+                "default": False,
+            },
+            "lightx2v_lazy_load": {
+                "kind": "boolean",
+                "label": "lazy_load",
+                "default": False,
+            },
+            "lightx2v_unload_modules": {
+                "kind": "boolean",
+                "label": "unload_modules",
                 "default": False,
             },
             "lightx2v_self_attn_1_type": {

@@ -56,9 +56,12 @@ class AdminLoadRequest(BaseModel):
     lightx2v_enable_cfg: bool | None = None
     lightx2v_denoising_step_list: list[int] | None = None
     lightx2v_cpu_offload: bool | None = None
-    lightx2v_offload_granularity: Literal["block", "model"] | None = None
+    lightx2v_offload_granularity: Literal["block", "model", "phase"] | None = None
     lightx2v_t5_cpu_offload: bool | None = None
+    lightx2v_clip_cpu_offload: bool | None = None
     lightx2v_vae_cpu_offload: bool | None = None
+    lightx2v_lazy_load: bool | None = None
+    lightx2v_unload_modules: bool | None = None
     lightx2v_self_attn_1_type: Literal["torch_sdpa"] | None = None
     lightx2v_cross_attn_1_type: Literal["torch_sdpa"] | None = None
     lightx2v_cross_attn_2_type: Literal["torch_sdpa"] | None = None

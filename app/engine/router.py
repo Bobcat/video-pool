@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 import uuid
 from pathlib import Path
@@ -29,6 +30,24 @@ from app.schemas import AdminLoadRequest, ImageToVideoRequest, VideoData, VideoG
 
 
 _INPROCESS_CUDA_BACKENDS = {"diffusers_wan_t2v"}
+_LIGHTX2V_DEFINITION_LOAD_DEFAULT_KEYS = {
+    "lightx2v_text_len": "text_len",
+    "lightx2v_sample_guide_scale": "sample_guide_scale",
+    "lightx2v_sample_shift": "sample_shift",
+    "lightx2v_enable_cfg": "enable_cfg",
+    "lightx2v_denoising_step_list": "denoising_step_list",
+    "lightx2v_cpu_offload": "cpu_offload",
+    "lightx2v_offload_granularity": "offload_granularity",
+    "lightx2v_t5_cpu_offload": "t5_cpu_offload",
+    "lightx2v_clip_cpu_offload": "clip_cpu_offload",
+    "lightx2v_vae_cpu_offload": "vae_cpu_offload",
+    "lightx2v_lazy_load": "lazy_load",
+    "lightx2v_unload_modules": "unload_modules",
+    "lightx2v_self_attn_1_type": "self_attn_1_type",
+    "lightx2v_cross_attn_1_type": "cross_attn_1_type",
+    "lightx2v_cross_attn_2_type": "cross_attn_2_type",
+    "lightx2v_rope_type": "rope_type",
+}
 
 
 class VideoRouterEngine:
@@ -338,7 +357,7 @@ def _apply_load_override(model_settings: ModelSettings, load_override: dict[str,
 
 
 def _definition_payload(model_settings: ModelSettings) -> dict[str, Any]:
-    return {
+    payload = {
         "model_path": model_settings.model_path,
         "backend": model_settings.backend,
         "enabled": model_settings.enabled,
@@ -347,4 +366,24 @@ def _definition_payload(model_settings: ModelSettings) -> dict[str, Any]:
         "recommended_guidance": model_settings.recommended_guidance,
         "generation_parameters": dict(model_settings.generation_parameters),
         "image_to_video_parameters": dict(model_settings.image_to_video_parameters),
+    }
+    if model_settings.backend == "lightx2v_serve":
+        payload.update(_lightx2v_definition_load_defaults(model_settings))
+    return payload
+
+
+def _lightx2v_definition_load_defaults(model_settings: ModelSettings) -> dict[str, Any]:
+    config_json = model_settings.lightx2v_config_json
+    if not config_json:
+        return {}
+    try:
+        config_payload = json.loads(Path(config_json).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(config_payload, dict):
+        return {}
+    return {
+        load_key: config_payload[config_key]
+        for load_key, config_key in _LIGHTX2V_DEFINITION_LOAD_DEFAULT_KEYS.items()
+        if config_key in config_payload
     }

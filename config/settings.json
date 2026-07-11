@@ -104,6 +104,40 @@
           "seed": {"kind": "integer_or_null", "target": "request", "default": null, "minimum": 0, "step": 1}
         },
         "image_to_video_parameters": {}
+      },
+      "wan2.1-i2v-14b-480p-int8-lightx2v": {
+        "backend": "lightx2v_serve",
+        "enabled": false,
+        "target_inflight": 1,
+        "model_path": "/home/gunnar/models/Wan2.1-I2V-14B-480P-LightX2V",
+        "modalities": ["text", "image"],
+        "output_modalities": ["video"],
+        "tasks": ["image_to_video"],
+        "max_images": 1,
+        "max_output_videos": 1,
+        "vram_estimate_mib": 26000,
+        "recommended_steps": 4,
+        "recommended_guidance": 1.0,
+        "lightx2v_python": "/home/gunnar/projects/lightx2v-runtime/.venv/bin/python",
+        "lightx2v_model_cls": "wan2.1_distill",
+        "lightx2v_task": "i2v",
+        "lightx2v_config_json": "/home/gunnar/projects/video-pool/config/lightx2v/wan21_i2v_480p_int8.json",
+        "lightx2v_max_queue_size": 1,
+        "lightx2v_start_timeout_s": 900.0,
+        "lightx2v_timeout_s": 3600.0,
+        "lightx2v_poll_interval_s": 0.5,
+        "generation_parameters": {},
+        "image_to_video_parameters": {
+          "size": {"kind": "enum", "target": "request", "default": "832x480", "allowed_values": ["832x480", "480x832"]},
+          "duration_seconds": {"kind": "number", "target": "request", "default": 5.0, "minimum": 0.5, "maximum": 10.0, "step": 0.1},
+          "fps": {"kind": "integer", "target": "request", "default": 16, "minimum": 1, "maximum": 30, "step": 1},
+          "num_frames": {"kind": "integer_or_null", "target": "request", "default": 81, "minimum": 1, "maximum": 121, "step": 4},
+          "n": {"kind": "integer", "target": "request", "default": 1, "minimum": 1, "maximum": 1, "step": 1},
+          "steps": {"kind": "integer", "target": "metadata", "default": 4, "minimum": 1, "maximum": 8, "step": 1},
+          "negative_prompt": {"kind": "string", "target": "metadata", "label": "negative_prompt", "default": ""},
+          "use_prompt_enhancer": {"kind": "boolean", "target": "metadata", "label": "use_prompt_enhancer", "default": false},
+          "seed": {"kind": "integer_or_null", "target": "request", "default": null, "minimum": 0, "step": 1}
+        }
       }
     }
   }
